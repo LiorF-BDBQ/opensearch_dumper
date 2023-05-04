@@ -15,7 +15,7 @@ def get_es(hosts, read_timeout):
 def dump_slice(hosts, index, size, scroll_timeout, read_timeout, slice_id, max_slices):
     es_source = get_es(hosts, read_timeout)
     query = {"slice": {"id": slice_id, "max": max_slices}}
-    with gzip.open(index + '_' + str(slice_id) + '_dump.jsonl.gz', mode='wb') as out:
+    with gzip.open("/data/" + index + '_' + str(slice_id) + '_dump.jsonl.gz', mode='wb') as out:
         try:
             for d in tqdm(
                     helpers.scan(
