@@ -1,0 +1,30 @@
+version: '3'
+services:
+  runner:
+    image: opensearch_dumper:test
+    container_name: runner
+    network_mode: host
+    command:
+      - copy
+      - /tmp/indices.txt
+    environment:
+      - ES_SOURCE_HOSTS=localhost:9200
+      - ES_TARGET_HOSTS=localhost:9201
+      - ES_SOURCE_SECURED=true
+      - ES_TARGET_SECURED=false
+      - ES_SOURCE_USER=elastic
+      - ES_SOURCE_PASSWORD=changeme
+      - ES_TARGET_USER=
+      - ES_TARGET_PASSWORD=
+      - ES_READ_TIMEOUT=60
+      - ES_READ_SIZE=1000
+      - ES_MAX_SLICES=5
+      - ES_WRITE_TIMEOUT=60
+      - ES_WRITE_SIZE=1000
+      - ES_WRITE_RETAIN_IDS=true
+      - ES_WRITE_PARALLELISM=5
+      - ES_WRITE_CHUNK_SIZE=100000000
+      - ES_DELETE_STAGED_FILES=true
+    volumes:
+      - ./__fixtures__/indices.txt:/tmp/indices.txt
+      - ./logs:/app/logs

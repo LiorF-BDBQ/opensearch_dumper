@@ -1,39 +1,26 @@
-from multiprocessing import Pool
+import os
+import shutil
+from distutils.util import strtobool
 
 import click
 from tqdm import tqdm
-from opensearchpy import helpers, NotFoundError, OpenSearch
-import json
-import gzip
+from urllib3.exceptions import InsecureRequestWarning
 
+from utils import dump_index, get_es, get_index_list, ingest, get_dump_path, PROCESS_START
 
-def get_es(hosts, read_timeout):
-    return OpenSearch(hosts=hosts,
-                      read_timeout=read_timeout)
+import logging
+import urllib3
 
+urllib3.disable_warnings(InsecureRequestWarning)
 
-def dump_slice(hosts, index, size, scroll_timeout, read_timeout, slice_id, max_slices):
-    es_source = get_es(hosts, read_timeout)
-    query = {"slice": {"id": slice_id, "max": max_slices}} if max_slices > 1 else None
-    with gzip.open("/data/" + index + '_' + str(slice_id) + '_dump.jsonl.gz', mode='wb') as out:
-        try:
-            for d in tqdm(
-                    helpers.scan(
-                        es_source,
-                        index=index,
-                        query=query,
-                        size=size,
-                        scroll=scroll_timeout,
-                        raise_on_error=True,
-                        preserve_order=False,
-                        request_timeout=read_timeout
-                    )
-            ):
-                out.write(("%s\n" % json.dumps(d['_source'], ensure_ascii=False)).encode(encoding='UTF-8'))
-        except NotFoundError:
-            click.echo(f'Error dumping index {index}: Not Found', err=True)
-            return False
-    return True
+success_logger = logging.getLogger('successful_indices')
+failure_logger = logging.getLogger('failed_indices')
+success_file_handler = logging.FileHandler(f"./logs/success", mode='a')
+failure_file_handler = logging.FileHandler(f"./logs/failure", mode='a')
+success_logger.setLevel(logging.DEBUG)
+failure_logger.setLevel(logging.DEBUG)
+success_logger.handlers = [success_file_handler]
+failure_logger.handlers = [failure_file_handler]
 
 
 @click.group()
@@ -42,18 +29,114 @@ def cli():
 
 
 @cli.command()
-@click.argument('index')
-@click.option('--hosts')
-@click.option('--scroll_timeout', default=u'1m')
-@click.option('--read_timeout', default=60)
-@click.option('--size', default=1000)
-@click.option('--max_slices', default=1)
-def dump(hosts, index, size, scroll_timeout, read_timeout, max_slices):
-    pool = Pool(max_slices)
-    args = [(hosts, index, size, scroll_timeout, read_timeout, i, max_slices) for i
-            in range(max_slices)]
-    pool.starmap(dump_slice, args)
+@click.argument("index")
+@click.option("--source_hosts", default=os.getenv("ES_SOURCE_HOSTS", "localhost:9200"))
+@click.option("--source_username", default=os.getenv("ES_SOURCE_USER", None))
+@click.option("--source_password", default=os.getenv("ES_SOURCE_PASSWORD", None))
+@click.option("--source_secured", default=os.getenv("ES_SOURCE_SECURED", False))
+@click.option("--read_timeout", default=os.getenv("ES_READ_TIMEOUT", 60))
+@click.option("--read_size", default=os.getenv("ES_READ_SIZE", 100))
+@click.option("--max_slices", default=os.getenv("ES_MAX_SLICES", 5))
+def dump(
+    index,
+    source_hosts,
+    source_username,
+    source_password,
+    source_secured,
+    read_timeout,
+    read_size,
+    max_slices,
+):
+    client = get_es(
+        source_hosts, source_secured, read_timeout, source_username, source_password
+    )
+    dump_index(
+        client,
+        index,
+        max_slices,
+        read_size,
+        read_timeout,
+    )
 
 
-if __name__ == '__main__':
+@cli.command()
+@click.argument("index_list_path")
+@click.option("--source_hosts", default=os.getenv("ES_SOURCE_HOSTS", "localhost:9200"))
+@click.option("--target_hosts", default=os.getenv("ES_TARGET_HOSTS", "localhost:9200"))
+@click.option("--source_secured", default=strtobool(os.getenv("ES_SOURCE_SECURED", "False")))
+@click.option("--target_secured", default=strtobool(os.getenv("ES_TARGET_SECURED", "False")))
+@click.option("--source_username", default=os.getenv("ES_SOURCE_USER", None))
+@click.option("--source_password", default=os.getenv("ES_SOURCE_PASSWORD", None))
+@click.option("--target_username", default=os.getenv("ES_TARGET_USER", None))
+@click.option("--target_password", default=os.getenv("ES_TARGET_PASSWORD", None))
+@click.option("--read_timeout", default=int(os.getenv("ES_READ_TIMEOUT", 60)))
+@click.option("--read_size", default=int(os.getenv("ES_READ_SIZE", 100)))
+@click.option("--max_slices", default=int(os.getenv("ES_MAX_SLICES", 5)))
+@click.option("--write_timeout", default=int(os.getenv("ES_WRITE_TIMEOUT", 60)))
+@click.option("--write_size", default=int(os.getenv("ES_WRITE_SIZE", 100)))
+@click.option(
+    "--write_retain_ids", default=strtobool(os.getenv("ES_WRITE_RETAIN_IDS", "True"))
+)
+@click.option("--write_parallelism", default=int(os.getenv("ES_WRITE_PARALLELISM", 1)))
+@click.option(
+    "--write_max_chunk_size",
+    default=int(os.getenv("ES_WRITE_CHUNK_SIZE", 100 * 1000 * 1000)),
+)
+@click.option(
+    "--delete_staged_files", default=strtobool(os.getenv("ES_DELETE_STAGED_FILES", "True"))
+)
+def copy(
+    index_list_path,
+    source_hosts,
+    target_hosts,
+    source_username,
+    source_password,
+    source_secured,
+    target_secured,
+    target_username,
+    target_password,
+    read_timeout,
+    read_size,
+    max_slices,
+    write_timeout,
+    write_size,
+    write_retain_ids,
+    write_parallelism,
+    write_max_chunk_size,
+    delete_staged_files,
+):
+    source_client = get_es(
+        source_hosts, source_secured, read_timeout, source_username, source_password
+    )
+    target_client = get_es(
+        target_hosts, target_secured, write_timeout, target_username, target_password
+    )
+    index_list = get_index_list(source_client, target_client, index_list_path)
+    with tqdm(total=len(index_list), desc="Processing indices", position=0) as pbar:
+        for index in index_list:
+            try:
+                dump_index(source_client, index, max_slices, read_size, read_timeout, tqdm_position=1)
+                index_path = get_dump_path(index).as_posix()
+                index_file_glob = index_path + "/*"
+                ingest(
+                    target_client,
+                    index_file_glob,
+                    write_retain_ids,
+                    write_timeout,
+                    write_size,
+                    write_parallelism,
+                    index,
+                    write_max_chunk_size,
+                    tqdm_position=1,
+                )
+                if delete_staged_files:
+                    shutil.rmtree(index_path)
+                success_logger.info(index)
+            except Exception as e:
+                click.echo(f"Failed to process index {str(e)}", err=True)
+                failure_logger.exception(index)
+            pbar.update(1)
+
+
+if __name__ == "__main__":
     cli()
