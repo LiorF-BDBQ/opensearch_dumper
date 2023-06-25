@@ -10,7 +10,6 @@ import click
 from opensearchpy import OpenSearch, helpers, NotFoundError
 from tqdm import tqdm
 
-
 PROCESS_START = int(time.time())
 
 
@@ -52,7 +51,9 @@ def dump_index(
     for file in get_dump_path(index).glob("*.jsonl"):
         total_in_files += get_row_count(file)
     if total_in_files != total:
-        raise ReconciliationError(f"Count of docs in index({total}) didn't match rows in files {total_in_files}")
+        raise ReconciliationError(
+            f"Count of docs in index({total}) didn't match rows in files {total_in_files}"
+        )
     return True
 
 
@@ -93,6 +94,7 @@ def dump_slice(
                 raise_on_error=True,
                 preserve_order=False,
                 request_timeout=read_timeout,
+                timeout=f"{read_timeout}s",
             ):
                 del d["_score"]
                 del d["sort"]
@@ -200,7 +202,7 @@ def ingest(
     write_parallelism: int,
     new_index_name: str,
     max_chunk_size: int,
-        tqdm_position: int = 0,
+    tqdm_position: int = 0,
 ):
     files = glob(files_pattern)
     total_count = 0
