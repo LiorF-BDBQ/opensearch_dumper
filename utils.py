@@ -48,6 +48,7 @@ def dump_index(
         with ThreadPool(max_slices) as pool:
             pool.starmap(dump_slice, args)
     total_in_files = 0
+    time.sleep(2)
     for file in get_dump_path(index).glob("*.jsonl"):
         total_in_files += get_row_count(file)
     if total_in_files != total:
@@ -225,12 +226,16 @@ def ingest(
 
 def get_row_count(source_file):
     with open(source_file, "r") as f:
-        buf = mmap(f.fileno(), 0, prot=PROT_READ)
-        lines = 0
-        readline = buf.readline
-        while readline():
-            lines += 1
-        return lines
+        try:
+            buf = mmap(f.fileno(), 0, prot=PROT_READ)
+            lines = 0
+            readline = buf.readline
+            while readline():
+                lines += 1
+            return lines
+        except Exception as e:
+            click.echo(f"Error reading {source_file}, got error {e}")
+            raise ReconciliationError("Cannot get row count from source file")
 
 
 def split_file_by_rows(source_file, num_parts):
