@@ -21,6 +21,7 @@ def get_es(hosts, secured, read_timeout, username, password):
     return OpenSearch(
         hosts=hosts.split(","),
         read_timeout=read_timeout,
+        timeout=read_timeout,
         http_auth=(username, password) if username and password else None,
         use_ssl=secured,
         verify_certs=False,
