@@ -128,6 +128,7 @@ def ingest_slice(
             chunk_size=num_actions,
             max_chunk_bytes=max_chunk_bytes,
             request_timeout=write_timeout,
+            timeout=f"{write_timeout}s",
             max_retries=3,  # handling 429 errors only, any failures would raise.
         )
         pbar.update(num_actions)
