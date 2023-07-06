@@ -65,6 +65,58 @@ def dump(
 
 
 @cli.command()
+@click.argument("file_glob_pattern")
+@click.argument("index_name")
+@click.option("--target_hosts", default=os.getenv("ES_TARGET_HOSTS", "localhost:9200"))
+@click.option("--target_username", default=os.getenv("ES_TARGET_USER", None))
+@click.option("--target_password", default=os.getenv("ES_TARGET_PASSWORD", None))
+@click.option(
+    "--target_secured", default=bool(strtobool(os.getenv("ES_TARGET_SECURED", "False")))
+)
+@click.option("--write_timeout", default=int(os.getenv("ES_WRITE_TIMEOUT", 60)))
+@click.option("--write_size", default=int(os.getenv("ES_WRITE_SIZE", 100)))
+@click.option(
+    "--write_retain_ids", default=strtobool(os.getenv("ES_WRITE_RETAIN_IDS", "True"))
+)
+@click.option("--write_parallelism", default=int(os.getenv("ES_WRITE_PARALLELISM", 1)))
+@click.option(
+    "--write_max_chunk_size",
+    default=int(os.getenv("ES_WRITE_CHUNK_SIZE", 100 * 1000 * 1000)),
+)
+def write(
+        file_glob_pattern,
+        index_name,
+        target_hosts,
+        target_username,
+        target_password,
+        target_secured,
+        write_timeout,
+        write_size,
+        write_retain_ids,
+        write_parallelism,
+        write_max_chunk_size,
+):
+    target_client = get_es(
+        target_hosts, target_secured, write_timeout, target_username, target_password
+    )
+    try:
+        ingest(
+            target_client,
+            file_glob_pattern,
+            write_retain_ids,
+            write_timeout,
+            write_size,
+            write_parallelism,
+            index_name,
+            write_max_chunk_size,
+            tqdm_position=0,
+        )
+    except Exception as e:
+        click.echo(f"Failed to write index {str(e)}", err=True)
+        failure_logger.exception(index_name)
+
+
+@cli.command()
 @click.argument("index_list_path")
 @click.option("--source_hosts", default=os.getenv("ES_SOURCE_HOSTS", "localhost:9200"))
 @click.option("--target_hosts", default=os.getenv("ES_TARGET_HOSTS", "localhost:9200"))

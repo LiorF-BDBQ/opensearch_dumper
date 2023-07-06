@@ -4,7 +4,7 @@ import time
 from glob import glob
 from mmap import mmap, PROT_READ
 from multiprocessing.pool import ThreadPool
-from typing import Tuple
+from typing import Tuple, List
 
 import click
 from opensearchpy import OpenSearch, helpers, NotFoundError
