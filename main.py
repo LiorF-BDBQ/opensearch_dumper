@@ -249,7 +249,7 @@ def compare(
             try:
                 total_in_source = get_doc_count(source_client, index)
                 total_in_target = get_doc_count(target_client, index)
-                results.append([index, total_in_source, total_in_source,
+                results.append([index, total_in_source, total_in_target,
                                 abs(total_in_source-total_in_target), total_in_target == total_in_source])
             except:
                 results.append([index, 0, 0, 0, "FAILED TO CHECK"])
