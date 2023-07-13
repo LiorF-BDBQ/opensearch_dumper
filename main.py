@@ -1,4 +1,5 @@
 import logging
+import math
 import os
 import shutil
 from distutils.util import strtobool
@@ -13,7 +14,7 @@ from utils import (
     get_es,
     get_index_list,
     ingest,
-    get_dump_path,
+    get_dump_path, get_doc_count,
 )
 
 urllib3.disable_warnings(InsecureRequestWarning)
@@ -205,6 +206,58 @@ def copy(
                 click.echo(f"Failed to process index {str(e)}", err=True)
                 failure_logger.exception(index)
             pbar.update(1)
+
+
+@cli.command()
+@click.argument("index_list_path")
+@click.option("--source_hosts", default=os.getenv("ES_SOURCE_HOSTS", "localhost:9200"))
+@click.option("--target_hosts", default=os.getenv("ES_TARGET_HOSTS", "localhost:9200"))
+@click.option(
+    "--source_secured", default=strtobool(os.getenv("ES_SOURCE_SECURED", "False"))
+)
+@click.option(
+    "--target_secured", default=strtobool(os.getenv("ES_TARGET_SECURED", "False"))
+)
+@click.option("--source_username", default=os.getenv("ES_SOURCE_USER", None))
+@click.option("--source_password", default=os.getenv("ES_SOURCE_PASSWORD", None))
+@click.option("--target_username", default=os.getenv("ES_TARGET_USER", None))
+@click.option("--target_password", default=os.getenv("ES_TARGET_PASSWORD", None))
+@click.option("--read_timeout", default=int(os.getenv("ES_READ_TIMEOUT", 60)))
+def compare(
+    index_list_path,
+    source_hosts,
+    target_hosts,
+    source_username,
+    source_password,
+    source_secured,
+    target_secured,
+    target_username,
+    target_password,
+    read_timeout,
+):
+    source_client = get_es(
+        source_hosts, source_secured, read_timeout, source_username, source_password
+    )
+    target_client = get_es(
+        target_hosts, target_secured, read_timeout, target_username, target_password
+    )
+    with open(index_list_path, "r") as f:
+        index_list = [s for s in [s.strip() for s in f.read().split("\n")] if s]
+    results = []
+    with tqdm(total=len(index_list), desc="Processing indices", position=0) as pbar:
+        for index in index_list:
+            try:
+                total_in_source = get_doc_count(source_client, index)
+                total_in_target = get_doc_count(target_client, index)
+                results.append([index, total_in_source, total_in_source,
+                                abs(total_in_source-total_in_target), total_in_target == total_in_source])
+            except:
+                results.append([index, 0, 0, 0, "FAILED TO CHECK"])
+            pbar.update(1)
+
+    print("\t".join(["index name", "total in source", "total in target", "diff", "are equal"]))
+    for result in results:
+        print("\t".join(result))
 
 
 if __name__ == "__main__":
