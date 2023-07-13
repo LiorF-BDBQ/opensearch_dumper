@@ -257,6 +257,7 @@ def compare(
 
     print("\t".join(["index name", "total in source", "total in target", "diff", "are equal"]))
     for result in results:
+        result = [str(r) for r in result]
         print("\t".join(result))
 
 
