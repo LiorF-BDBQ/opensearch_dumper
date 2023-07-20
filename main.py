@@ -1,5 +1,4 @@
 import logging
-import math
 import os
 import shutil
 from distutils.util import strtobool
@@ -146,7 +145,11 @@ def write(
 )
 @click.option(
     "--delete_staged_files",
-    default=strtobool(os.getenv("ES_DELETE_STAGED_FILES", "True")),
+    default=bool(strtobool(os.getenv("ES_DELETE_STAGED_FILES", "True"))),
+)
+@click.option(
+    "--use-retry-mechanism",
+    default=bool(strtobool(os.getenv("ES_USE_RETRY_MECHANISM", "False"))),
 )
 def copy(
     index_list_path,
@@ -167,6 +170,7 @@ def copy(
     write_parallelism,
     write_max_chunk_size,
     delete_staged_files,
+    use_retry_mechanism
 ):
     source_client = get_es(
         source_hosts, source_secured, read_timeout, source_username, source_password
@@ -198,6 +202,7 @@ def copy(
                     index,
                     write_max_chunk_size,
                     tqdm_position=1,
+                    use_retry_mechanism=use_retry_mechanism,
                 )
                 if delete_staged_files:
                     shutil.rmtree(index_path)

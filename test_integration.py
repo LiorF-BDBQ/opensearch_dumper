@@ -97,6 +97,7 @@ def test_ingest(opensearch: OpenSearch):
         2,
         test_index_name,
         chunk_size,
+        use_retry_mechanism=True
     )
     assert result
 

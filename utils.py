@@ -4,7 +4,7 @@ import time
 from glob import glob
 from mmap import mmap, PROT_READ
 from multiprocessing.pool import ThreadPool
-from typing import Tuple, List
+from typing import Tuple
 
 import click
 from opensearchpy import OpenSearch, helpers, NotFoundError
@@ -117,22 +117,43 @@ def ingest_slice(
     max_chunk_bytes: int,
     new_index_name: str,
     partition: Tuple[int, int],
+    use_retry_mechanism: bool,
     pbar: tqdm,
 ):
     for chunk in process_chunks(
         partition, source_file, write_size, retain_ids, new_index_name
     ):
         num_actions = len(chunk)
-        helpers.bulk(
-            client,
-            chunk,
-            chunk_size=num_actions,
-            max_chunk_bytes=max_chunk_bytes,
-            request_timeout=write_timeout,
-            timeout=f"{write_timeout}s",
-            max_retries=3,  # handling 429 errors only, any failures would raise.
-        )
-        pbar.update(num_actions)
+        if use_retry_mechanism:
+            retries_counter = 0
+            while True:
+                try:
+                    helpers.bulk(
+                        client,
+                        chunk,
+                        chunk_size=num_actions,
+                        max_chunk_bytes=max_chunk_bytes,
+                        request_timeout=write_timeout,
+                        timeout=f"{write_timeout}s",
+                        max_retries=3,  # handling 429 errors only, any failures would raise.
+                    )
+                    pbar.update(num_actions)
+                    break
+                except Exception as e:
+                    click.echo(f"Chunk insert failed, retries_counter={retries_counter}")
+                    if retries_counter > 5:
+                        raise e
+        else:
+            helpers.bulk(
+                client,
+                chunk,
+                chunk_size=num_actions,
+                max_chunk_bytes=max_chunk_bytes,
+                request_timeout=write_timeout,
+                timeout=f"{write_timeout}s",
+                max_retries=3,  # handling 429 errors only, any failures would raise.
+            )
+            pbar.update(num_actions)
     return True
 
 
@@ -165,6 +186,7 @@ def ingest_file(
     max_chunk_size: int,
     new_index_name: str,
     bar_position: int = 0,
+    use_retry_mechanism=False
 ) -> bool:
     file_len, partition_offsets = split_file_by_rows(source_file, write_parallelism)
     with tqdm(
@@ -180,6 +202,7 @@ def ingest_file(
                 max_chunk_size,
                 new_index_name,
                 partition,
+                use_retry_mechanism,
                 pbar,
             )
             for partition in partition_offsets
@@ -206,6 +229,7 @@ def ingest(
     new_index_name: str,
     max_chunk_size: int,
     tqdm_position: int = 0,
+    use_retry_mechanism=False,
 ):
     files = glob(files_pattern)
     total_count = 0
@@ -220,6 +244,7 @@ def ingest(
             max_chunk_size,
             new_index_name,
             bar_position=tqdm_position,
+            use_retry_mechanism=use_retry_mechanism,
         )
         total_count += file_len
     reconcile(client, total_count, new_index_name)
