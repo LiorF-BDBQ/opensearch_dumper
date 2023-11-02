@@ -38,10 +38,10 @@ def cli():
 @click.option("--source_hosts", default=os.getenv("ES_SOURCE_HOSTS", "localhost:9200"))
 @click.option("--source_username", default=os.getenv("ES_SOURCE_USER", None))
 @click.option("--source_password", default=os.getenv("ES_SOURCE_PASSWORD", None))
-@click.option("--source_secured", default=os.getenv("ES_SOURCE_SECURED", False))
-@click.option("--read_timeout", default=os.getenv("ES_READ_TIMEOUT", 60))
-@click.option("--read_size", default=os.getenv("ES_READ_SIZE", 100))
-@click.option("--max_slices", default=os.getenv("ES_MAX_SLICES", 5))
+@click.option("--source_secured", default=bool(strtobool(os.getenv("ES_SOURCE_SECURED", False))))
+@click.option("--read_timeout", default=int(os.getenv("ES_READ_TIMEOUT", 60)))
+@click.option("--read_size", default=int(os.getenv("ES_READ_SIZE", 1000)))
+@click.option("--max_slices", default=int(os.getenv("ES_MAX_SLICES", 5)))
 def dump(
     index,
     source_hosts,
